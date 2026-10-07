@@ -1,1 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1Click vs deBridge vs Across vs Rango vs StealthEX vs THORChain – Rate Comparison</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --text:#e8eaf0; --muted:#8b91a1; --accent:#6c8cff; --good:#3ecf8e; --bad:#ff6b6b; --border:#262a35; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f6fa; --card:#fff; --text:#1b1e27; --muted:#6a7080; --border:#e2e5ee; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; font-size:.9rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  label { display:block; font-size:.75rem; color:var(--muted); margin-bottom:4px; }
+  select, input { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px 10px; font-size:.9rem; min-width:0; }
+  input.wide { width:100%; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); padding:9px 12px; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:16px; }
+  .res h2 { margin:0 0 10px; font-size:1rem; display:flex; justify-content:space-between; align-items:center; }
+  .badge { font-size:.7rem; background:var(--good); color:#06281a; padding:3px 8px; border-radius:999px; font-weight:700; }
+  .big { font-size:1.5rem; font-weight:700; margin:6px 0 2px; }
+  .bigsub { font-size:.72rem; color:var(--muted); margin-bottom:6px; }
+  .kv { display:flex; justify-content:space-between; gap:10px; font-size:.85rem; padding:4px 0; border-top:1px dashed var(--border); }
+  .kv span:first-child { color:var(--muted); white-space:nowrap; }
+  .kv span:last-child { text-align:right; }
+  .err { color:var(--bad); font-size:.85rem; word-break:break-word; }
+  .na { color:var(--muted); font-size:.85rem; line-height:1.5; }
+  .win { border-color:var(--good); }
+  details summary { cursor:pointer; color:var(--muted); font-size:.85rem; }
+  .note { font-size:.78rem; color:var(--muted); line-height:1.5; }
+  #summary { font-size:.95rem; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>1Click vs deBridge vs Across vs Rango vs StealthEX vs THORChain – Rate Comparison</h1>
+  <p class="sub">Ranked by <b>net</b> amount received, after deBridge's fixed fee is converted into the output token. Across supports USDC routes only; Rango, 1Click, StealthEX and THORChain support most pairs (THORChain: no Arbitrum or Solana USDC).</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label>From</label><select id="from"></select></div>
+      <button class="ghost" id="flip" title="Swap direction">⇄</button>
+      <div><label>To</label><select id="to"></select></div>
+      <div><label>Amount</label><input id="amount" type="number" min="0" step="any" value="100" style="width:110px"></div>
+      <div><label>Slippage % (1Click)</label><input id="slip" type="number" min="0" step="0.1" value="1" style="width:80px"></div>
+      <button id="go">Compare</button>
+    </div>
+
+    <details style="margin-top:14px" open>
+      <summary>Settings (wallet addresses & optional keys)</summary>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:1;min-width:240px">
+          <label>EVM wallet address (Ethereum / Base / Arbitrum)</label>
+          <input class="wide" id="evmAddr" placeholder="0x…">
+        </div>
+        <div style="flex:1;min-width:240px">
+          <label>Solana wallet address</label>
+          <input class="wide" id="solAddr" placeholder="Base58 address">
+        </div>
+        <div style="flex:1;min-width:240px">
+          <label>1Click JWT (optional)</label>
+          <input class="wide" id="oneKey" placeholder="Bearer token">
+        </div>
+        <div style="flex:1;min-width:240px">
+          <label>Across API key (optional)</label>
+          <input class="wide" id="acrossKey" placeholder="Without it, strict rate limits apply">
+        </div>
+      </div>
+      <p class="note" style="margin:8px 0 0">The page picks the right address automatically: the origin-chain one for refunds and the destination-chain one as recipient. Public addresses only – never a private key.</p>
+    </details>
+  </div>
+
+  <div id="summary" class="card" style="display:none"></div>
+  <div class="grid" id="results"></div>
+
+  <p class="note">
+    Quotes are indicative only (nothing is executed). Slippage applies to 1Click; deBridge and Across return their own fee-adjusted amounts.
+    The deBridge fixed fee is converted using 1Click's token prices. Origin-chain gas for your own transaction is not included for any provider.
+    Rates change quickly – click Compare again for a fresh read. Not financial advice.
+  </p>
+</div>
+
+<script>
+// ---------- Config ----------
+const ZERO = '0x0000000000000000000000000000000000000000';
+const USDC = {
+  eth:  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  arb:  '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  sol:  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+};
+const EVM_SAMPLE = '0x0000000000000000000000000000000000000001';
+const SOL_SAMPLE = '11111111111111111111111111111111';
+
+// oneChain = blockchain key in 1Click's token list; kind = address family
+const ASSETS = {
+  ETH:      { label: 'ETH (Ethereum)',    symbol: 'ETH',  decimals: 18, oneChain: 'eth',  kind: 'evm', native: { symbol: 'ETH', decimals: 18, chain: 'eth' },
+              fallbackOneId: 'nep141:eth.omft.near', rango: 'ETH.ETH', debridge: { chainId: '1', token: ZERO }, across: null,
+              stealthex: { symbol: 'eth', network: 'mainnet' }, thorchain: 'ETH.ETH' },
+  SOL:      { label: 'SOL (Solana)',      symbol: 'SOL',  decimals: 9,  oneChain: 'sol',  kind: 'sol', native: { symbol: 'SOL', decimals: 9, chain: 'sol' },
+              fallbackOneId: 'nep141:sol.omft.near', rango: 'SOLANA.SOL', debridge: { chainId: '7565164', token: '11111111111111111111111111111111' }, across: null,
+              stealthex: { symbol: 'sol', network: 'mainnet' }, thorchain: 'SOL.SOL' },
+  USDC_ETH: { label: 'USDC (Ethereum)',   symbol: 'USDC', decimals: 6,  oneChain: 'eth',  kind: 'evm', native: { symbol: 'ETH', decimals: 18, chain: 'eth' },
+              rango: 'ETH.USDC--' + USDC.eth.toLowerCase(), debridge: { chainId: '1', token: USDC.eth },        across: { chainId: '1', token: USDC.eth },
+              stealthex: { symbol: 'usdc', network: 'eth' }, thorchain: 'ETH.USDC-' + USDC.eth.toUpperCase() },
+  USDC_BASE:{ label: 'USDC (Base)',       symbol: 'USDC', decimals: 6,  oneChain: 'base', kind: 'evm', native: { symbol: 'ETH', decimals: 18, chain: 'eth' },
+              fallbackOneId: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
+              rango: 'BASE.USDC--' + USDC.base.toLowerCase(), debridge: { chainId: '8453', token: USDC.base },    across: { chainId: '8453', token: USDC.base },
+              stealthex: { symbol: 'usdc', network: 'base' }, thorchain: 'BASE.USDC-' + USDC.base.toUpperCase() },
+  USDC_ARB: { label: 'USDC (Arbitrum)',   symbol: 'USDC', decimals: 6,  oneChain: 'arb',  kind: 'evm', native: { symbol: 'ETH', decimals: 18, chain: 'eth' },
+              fallbackOneId: 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near',
+              rango: 'ARBITRUM.USDC--' + USDC.arb.toLowerCase(), debridge: { chainId: '42161', token: USDC.arb },    across: { chainId: '42161', token: USDC.arb },
+              stealthex: { symbol: 'usdc', network: 'arbitrum' }, thorchain: null },
+  USDC_SOL: { label: 'USDC (Solana)',     symbol: 'USDC', decimals: 6,  oneChain: 'sol',  kind: 'sol', native: { symbol: 'SOL', decimals: 9, chain: 'sol' },
+              rango: 'SOLANA.USDC--' + USDC.sol, debridge: { chainId: '7565164', token: USDC.sol },   across: { chainId: '34268394551451', token: USDC.sol },
+              stealthex: { symbol: 'usdc', network: 'sol' }, thorchain: null }
+};
+
+const ONECLICK_BASE = 'https://1click.chaindefuser.com';
+const DEBRIDGE_BASE = 'https://dln.debridge.finance';
+const ACROSS_BASE   = 'https://app.across.to/api';
+const THORNODE_BASE  = 'https://gateway.liquify.com/chain/thorchain_api'; // Nine Realms hosts are retired; Liquify is the public gateway
+const PROXY = 'https://stealthexproxy.ranchimallfze.workers.dev';
+
+// ---------- Helpers ----------
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 6) => Number(n).toLocaleString(undefined, { maximumFractionDigits: d });
+const toBase = (amt, dec) => {
+  const [i, f = ''] = String(amt).split('.');
+  return (BigInt(i || '0') * 10n ** BigInt(dec) + BigInt((f + '0'.repeat(dec)).slice(0, dec))).toString();
+};
+class Unsupported extends Error {}
+
+const addrFor = (asset, addrs) => (asset.kind === 'sol' ? addrs.sol : addrs.evm) || (asset.kind === 'sol' ? SOL_SAMPLE : EVM_SAMPLE);
+
+// ---------- 1Click token list (IDs + USD prices) ----------
+let oneClickTokens = null;
+async function loadTokens() {
+  if (oneClickTokens) return oneClickTokens;
+  try {
+    const r = await fetch(`${ONECLICK_BASE}/v0/tokens`);
+    oneClickTokens = await r.json();
+  } catch (_) { oneClickTokens = []; }
+  return oneClickTokens;
+}
+const findToken = (symbol, chain) =>
+  (oneClickTokens || []).find(t => String(t.symbol).toUpperCase() === symbol && String(t.blockchain).toLowerCase() === chain);
+const priceOf = (symbol, chain) => {
+  const p = Number(findToken(symbol, chain)?.price);
+  return p > 0 ? p : null;
+};
+function resolveOneClickId(asset) {
+  const id = findToken(asset.symbol, asset.oneChain)?.assetId || asset.fallbackOneId;
+  if (!id) throw new Error(`Couldn't find ${asset.label} in 1Click's token list.`);
+  return id;
+}
+
+// ---------- 1Click ----------
+async function getOneClick({ from, to, amount, slippage, jwt, recipient, refund }) {
+  const body = {
+    dry: true,
+    swapType: 'EXACT_INPUT',
+    slippageTolerance: Math.round(slippage * 100),
+    originAsset: resolveOneClickId(from),
+    depositType: 'ORIGIN_CHAIN',
+    destinationAsset: resolveOneClickId(to),
+    amount: toBase(amount, from.decimals),
+    refundTo: refund,
+    refundType: 'ORIGIN_CHAIN',
+    recipient,
+    recipientType: 'DESTINATION_CHAIN',
+    deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  };
+  const headers = { 'Content-Type': 'application/json' };
+  if (jwt) headers.Authorization = `Bearer ${jwt}`;
+
+  const t0 = performance.now();
+  const res = await fetch(`${ONECLICK_BASE}/v0/quote`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+  const q = data.quote;
+  return {
+    provider: '1Click',
+    out: Number(q.amountOutFormatted ?? Number(q.amountOut) / 10 ** to.decimals),
+    outMin: q.minAmountOut ? Number(q.minAmountOut) / 10 ** to.decimals : null,
+    minLabel: 'Min. received',
+    usdOut: q.amountOutUsd ? Number(q.amountOutUsd) : null,
+    eta: q.timeEstimate ? `${q.timeEstimate}s` : '—',
+    route: 'NEAR Intents (solver network)',
+    extraNative: 0,
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- deBridge (DLN) ----------
+async function getDeBridge({ from, to, amount }) {
+  const params = new URLSearchParams({
+    srcChainId: from.debridge.chainId,
+    srcChainTokenIn: from.debridge.token,
+    srcChainTokenInAmount: toBase(amount, from.decimals),
+    dstChainId: to.debridge.chainId,
+    dstChainTokenOut: to.debridge.token,
+    prependOperatingExpenses: 'true'
+  });
+  const t0 = performance.now();
+  const res = await fetch(`${DEBRIDGE_BASE}/v1.0/dln/order/quote?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.estimation) throw new Error(data.errorMessage || data.message || `HTTP ${res.status}`);
+
+  const out = data.estimation.dstChainTokenOut;
+  const dec = 10 ** (out.decimals ?? to.decimals);
+  return {
+    provider: 'deBridge',
+    out: Number(out.amount) / dec,
+    outMin: out.recommendedAmount ? Number(out.recommendedAmount) / dec : null,
+    minLabel: 'Recommended amount',
+    usdOut: out.approximateUsdValue ?? null,
+    eta: data.order?.approximateFulfillmentDelay ? `~${data.order.approximateFulfillmentDelay}s` : '—',
+    route: 'DLN (intent-based, market makers)',
+    extraNative: data.fixFee ? Number(data.fixFee) / 10 ** from.native.decimals : 0, // paid on top, in origin-chain native token
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- Across ----------
+async function getAcross({ from, to, amount, recipient, apiKey }) {
+  if (!from.across || !to.across) {
+    throw new Unsupported('Across only supports USDC routes here. Pick two USDC options (e.g. USDC Ethereum → USDC Base) to include it.');
+  }
+  const params = new URLSearchParams({
+    inputToken: from.across.token,
+    outputToken: to.across.token,
+    originChainId: from.across.chainId,
+    destinationChainId: to.across.chainId,
+    amount: toBase(amount, from.decimals),
+    recipient,
+    skipAmountLimit: 'true'
+  });
+  const headers = {};
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+  const t0 = performance.now();
+  const res = await fetch(`${ACROSS_BASE}/suggested-fees?${params}`, { headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+  if (data.isAmountTooLow) throw new Error(`Amount is below Across's minimum for this route.`);
+
+  const fee = data.totalRelayFee?.total != null ? Number(data.totalRelayFee.total) / 10 ** from.decimals : null;
+  const out = data.outputAmount != null ? Number(data.outputAmount) / 10 ** to.decimals : Number(amount) - (fee ?? 0);
+  const pct = data.totalRelayFee?.pct != null ? (Number(data.totalRelayFee.pct) / 1e18) * 100 : null;
+  const eta = data.estimatedFillTimeSec ?? data.expectedFillTimeSec;
+  return {
+    provider: 'Across',
+    out,
+    outMin: null,
+    usdOut: to.symbol === 'USDC' ? out : null,
+    eta: eta ? `~${eta}s` : '—',
+    route: 'Across intents (relayers)',
+    feeText: fee != null ? `${fmt(fee)} ${from.symbol}${pct != null ? ` (${pct.toFixed(3)}%)` : ''}` : null,
+    extraNative: 0,
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- Rango ----------
+async function getRango({ from, to, amount, slippage }) {
+  const params = new URLSearchParams({
+    from: from.rango,
+    to: to.rango,
+    amount: toBase(amount, from.decimals),   // base units (wei / lamports / 6-dec USDC)
+    slippage: String(slippage)
+  });
+  const t0 = performance.now();
+  const res = await fetch(`${PROXY}/rango/basic/quote?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+  if (!data.route || (data.resultType && data.resultType !== 'OK')) {
+    throw new Error(`Rango: ${data.resultType || data.error || 'no route found'}`);
+  }
+
+  const r = data.route;
+  // Rango may return base units (integer string) or a human-readable decimal – detect safely.
+  const toHuman = v => {
+    if (v == null) return null;
+    const str = String(v);
+    if (str.includes('.')) return Number(str);
+    return Number(str) / 10 ** to.decimals;
+  };
+  const steps = (r.path || []).map(p => p.swapper?.title || p.swapper?.swapperId).filter(Boolean);
+  return {
+    provider: 'Rango',
+    out: toHuman(r.outputAmount),
+    outMin: toHuman(r.outputAmountMin),
+    minLabel: 'Min. received',
+    usdOut: r.outputAmountUsd ? Number(r.outputAmountUsd) : null,
+    eta: r.estimatedTimeInSeconds ? `~${r.estimatedTimeInSeconds}s` : '—',
+    route: steps.length ? steps.join(' → ') : (r.swapper?.title || 'Rango aggregator'),
+    gasUsd: r.feeUsd != null ? Number(r.feeUsd) : null,
+    extraNative: 0,
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- StealthEX ----------
+// API v4: POST /v4/rates/estimated-amount (floating rate, direct estimation). Fees are already included in estimated_amount.
+async function getStealthEx({ from, to, amount }) {
+  if (!from.stealthex || !to.stealthex) throw new Unsupported('This asset is not mapped for StealthEX.');
+  const body = {
+    route: { from: from.stealthex, to: to.stealthex },
+    amount: Number(amount),
+    rate: 'floating',
+    estimation: 'direct'
+  };
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(`${PROXY}/v4/rates/estimated-amount`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    throw new Error('Could not reach the quote proxy. Check your connection or try again.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.err ? `${data.err.kind || 'Error'}${data.err.details ? ': ' + data.err.details : ''}` : (data.message || `HTTP ${res.status}`));
+  if (data.estimated_amount == null) throw new Error('StealthEX returned no estimate.');
+
+  return {
+    provider: 'StealthEX',
+    out: Number(data.estimated_amount),
+    outMin: null,
+    usdOut: to.symbol === 'USDC' ? Number(data.estimated_amount) : null,
+    eta: '~5–30 min',
+    route: 'StealthEX (custody-free swap, floating rate)',
+    extraNative: 0,
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- THORChain ----------
+// THORNode quote API: GET /thorchain/quote/swap (amounts are in 1e8 units). expected_amount_out is already net of fees.
+async function getThorChain({ from, to, amount, recipient }) {
+  if (!from.thorchain || !to.thorchain) {
+    throw new Unsupported('THORChain does not support this pair here (no Arbitrum or Solana USDC). Try ETH, SOL, USDC Ethereum or USDC Base.');
+  }
+  const params = new URLSearchParams({
+    from_asset: from.thorchain,
+    to_asset: to.thorchain,
+    amount: toBase(amount, 8)
+  });
+  if (recipient && recipient !== EVM_SAMPLE && recipient !== SOL_SAMPLE) params.set('destination', recipient);
+
+  const t0 = performance.now();
+  const path = `/thorchain/quote/swap?${params}`;
+  let res;
+  try {
+    res = await fetch(`${THORNODE_BASE}${path}`);
+  } catch (e) {
+    // direct call blocked (CORS / network) – retry through the proxy
+    try {
+      res = await fetch(`${PROXY}${path}`);
+    } catch (e2) {
+      throw new Error('Could not reach THORNode, directly or through the proxy. Try again shortly.');
+    }
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+  if (data.expected_amount_out == null) throw new Error('THORChain returned no quote.');
+
+  const out = Number(data.expected_amount_out) / 1e8;
+  const f = data.fees || {};
+  const feeTotal = f.total != null ? Number(f.total) / 1e8 : null;
+  const secs = data.total_swap_seconds ?? ((data.inbound_confirmation_seconds || 0) + (data.outbound_delay_seconds || 0));
+  return {
+    provider: 'THORChain',
+    out,
+    outMin: null,
+    usdOut: to.symbol === 'USDC' ? out : null,
+    eta: secs ? `~${secs}s` : '—',
+    route: 'THORChain (native cross-chain liquidity pools)',
+    feeText: feeTotal != null ? `${fmt(feeTotal)} ${to.symbol}${f.slippage_bps != null ? ` (slip ${(f.slippage_bps / 100).toFixed(2)}%)` : ''}` : null,
+    extraNative: 0,
+    ms: Math.round(performance.now() - t0)
+  };
+}
+
+// ---------- Net-cost adjustment ----------
+// Converts any fee paid on top in the origin native token into the output token.
+function applyNet(r, from, to) {
+  r.net = r.out;
+  if (!r.extraNative) return;
+  const nativePrice = priceOf(from.native.symbol, from.native.chain);
+  const outPrice = priceOf(to.symbol, to.oneChain);
+  r.fixedFeeText = `${fmt(r.extraNative)} ${from.native.symbol}`;
+  if (nativePrice && outPrice) {
+    const feeUsd = r.extraNative * nativePrice;
+    r.feeInOut = feeUsd / outPrice;
+    r.fixedFeeText += ` ≈ $${fmt(feeUsd, 2)}`;
+    r.net = r.out - r.feeInOut;
+  } else {
+    r.priceMissing = true;
+  }
+}
+
+// ---------- UI ----------
+function card(r, isWinner, from, to, amount) {
+  if (r.unsupported) return `<div class="card res"><h2>${r.provider}</h2><div class="na">ℹ ${r.error}</div></div>`;
+  if (r.error) return `<div class="card res"><h2>${r.provider}</h2><div class="err">⚠ ${r.error}</div></div>`;
+  const rate = r.net / Number(amount);
+  const adjusted = r.feeInOut != null;
+  return `
+  <div class="card res ${isWinner ? 'win' : ''}">
+    <h2>${r.provider} ${isWinner ? '<span class="badge">BEST NET</span>' : ''}</h2>
+    <div class="big">${fmt(r.net)} ${to.symbol}</div>
+    <div class="bigsub">${adjusted ? 'net after fixed fee' : 'net received'}</div>
+    <div class="kv"><span>Net rate</span><span>1 ${from.symbol} ≈ ${fmt(rate)} ${to.symbol}</span></div>
+    ${adjusted ? `<div class="kv"><span>Quoted output</span><span>${fmt(r.out)} ${to.symbol}</span></div>` : ''}
+    ${r.fixedFeeText ? `<div class="kv"><span>Fixed fee (extra)</span><span>${r.fixedFeeText}</span></div>` : ''}
+    ${r.priceMissing ? `<div class="kv"><span>Note</span><span>No price data – fee not converted</span></div>` : ''}
+    ${r.outMin != null ? `<div class="kv"><span>${r.minLabel}</span><span>${fmt(r.outMin)} ${to.symbol}</span></div>` : ''}
+    ${r.usdOut != null ? `<div class="kv"><span>Output value</span><span>$${fmt(r.usdOut, 2)}</span></div>` : ''}
+    ${r.feeText ? `<div class="kv"><span>Relay fee</span><span>${r.feeText}</span></div>` : ''}
+    ${r.gasUsd != null ? `<div class="kv"><span>Origin gas (not in net)</span><span>≈ $${fmt(r.gasUsd, 2)}</span></div>` : ''}
+    <div class="kv"><span>Est. time</span><span>${r.eta}</span></div>
+    <div class="kv"><span>Route</span><span>${r.route}</span></div>
+    <div class="kv"><span>API latency</span><span>${r.ms} ms</span></div>
+  </div>`;
+}
+
+async function compare() {
+  const from = ASSETS[$('from').value];
+  const to   = ASSETS[$('to').value];
+  const amount = $('amount').value;
+  const slippage = Number($('slip').value) || 1;
+
+  if (from === to) { alert('Pick two different assets.'); return; }
+  if (!(Number(amount) > 0)) { alert('Enter an amount greater than 0.'); return; }
+
+  $('go').disabled = true; $('go').textContent = 'Fetching…';
+  $('results').innerHTML = '<div class="card">Loading quotes…</div>';
+  $('summary').style.display = 'none';
+
+  const addrs = { evm: $('evmAddr').value.trim(), sol: $('solAddr').value.trim() };
+  const recipient = addrFor(to, addrs);
+  const refund = addrFor(from, addrs);
+
+  await loadTokens();
+
+  const common = { from, to, amount, slippage };
+  const wrap = (name, fn) => Promise.resolve().then(fn).catch(e => ({ provider: name, error: e.message, unsupported: e instanceof Unsupported }));
+
+  const results = await Promise.all([
+    wrap('1Click',   () => getOneClick({ ...common, jwt: $('oneKey').value.trim(), recipient, refund })),
+    wrap('deBridge', () => getDeBridge(common)),
+    wrap('Across',   () => getAcross({ ...common, recipient, apiKey: $('acrossKey').value.trim() })),
+    wrap('Rango',    () => getRango(common)),
+    wrap('StealthEX', () => getStealthEx(common)),
+    wrap('THORChain', () => getThorChain({ ...common, recipient }))
+  ]);
+
+  results.forEach(r => { if (!r.error) applyNet(r, from, to); });
+
+  const ok = results.filter(r => !r.error);
+  const best = ok.length ? ok.reduce((a, b) => (a.net >= b.net ? a : b)) : null;
+  $('results').innerHTML = results.map(r => card(r, best === r && ok.length > 1, from, to, amount)).join('');
+
+  if (ok.length > 1) {
+    const lines = ok.filter(r => r !== best).map(r => {
+      const diff = best.net - r.net;
+      return `${r.provider}: ${fmt(diff)} ${to.symbol} less (${((diff / r.net) * 100).toFixed(2)}%)`;
+    });
+    $('summary').innerHTML = `<b>${best.provider}</b> gives the most net for ${amount} ${from.symbol}.<br>${lines.join('<br>')}`;
+    $('summary').style.display = 'block';
+  } else if (ok.length === 1) {
+    $('summary').innerHTML = `Only ${ok[0].provider} returned a quote – check the other cards.`;
+    $('summary').style.display = 'block';
+  }
+
+  $('go').disabled = false; $('go').textContent = 'Compare';
+}
+
+function init() {
+  const opts = Object.entries(ASSETS).map(([k, a]) => `<option value="${k}">${a.label}</option>`).join('');
+  $('from').innerHTML = opts; $('to').innerHTML = opts;
+  $('from').value = 'USDC_ETH'; $('to').value = 'USDC_BASE';
+
+  try {
+    // migrate the earlier recipient/refund fields by address type
+    const old = [localStorage.getItem('recipient'), localStorage.getItem('refund')].filter(Boolean);
+    if (!localStorage.getItem('evmAddr')) { const v = old.find(a => /^0x/i.test(a)); if (v) localStorage.setItem('evmAddr', v); }
+    if (!localStorage.getItem('solAddr')) { const v = old.find(a => !/^0x/i.test(a)); if (v) localStorage.setItem('solAddr', v); }
+
+    for (const id of ['oneKey', 'acrossKey', 'evmAddr', 'solAddr']) {
+      $(id).value = localStorage.getItem(id) || '';
+      $(id).onchange = e => localStorage.setItem(id, e.target.value);
+    }
+  } catch (_) {}
+
+  $('flip').onclick = () => { const f = $('from').value; $('from').value = $('to').value; $('to').value = f; };
+  $('go').onclick = compare;
+}
+init();
+</script>
+</body>
+</html>
 
