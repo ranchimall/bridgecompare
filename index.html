@@ -120,7 +120,10 @@ const ASSETS = {
               stealthex: { symbol: 'usdc', network: 'arbitrum' }, thorchain: null },
   USDC_SOL: { label: 'USDC (Solana)',     symbol: 'USDC', decimals: 6,  oneChain: 'sol',  kind: 'sol', native: { symbol: 'SOL', decimals: 9, chain: 'sol' },
               rango: 'SOLANA.USDC--' + USDC.sol, debridge: { chainId: '7565164', token: USDC.sol },   across: { chainId: '34268394551451', token: USDC.sol },
-              stealthex: { symbol: 'usdc', network: 'sol' }, thorchain: null }
+              stealthex: { symbol: 'usdc', network: 'sol' }, thorchain: null },
+  AVAX:     { label: 'AVAX (Avalanche C-Chain)', symbol: 'AVAX', decimals: 18, oneChain: 'avax', kind: 'evm', native: { symbol: 'AVAX', decimals: 18, chain: 'avax' },
+              rango: 'AVAX_CCHAIN.AVAX', debridge: { chainId: '43114', token: ZERO }, across: null,
+              stealthex: { symbol: 'avaxc', network: 'mainnet' }, thorchain: 'AVAX.AVAX' }
 };
 
 const ONECLICK_BASE = 'https://1click.chaindefuser.com';
